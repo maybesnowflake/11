@@ -1,0 +1,83 @@
+package com.deruy.plugin.misc;
+
+import com.deruy.plugin.DeruyPlugin;
+import org.bukkit.entity.Arrow;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityResurrectEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.potion.PotionEffect;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * 기본룰 잡다한 항목들:
+ * - 토템작동: EntityResurrectEvent 자체를 막지 않는 것이 기본이지만, config로 강제 on/off 가능하게.
+ * - 사망시 포션이팩트 유지: 사망 시점의 이펙트를 저장해뒀다가 리스폰 시 재적용.
+ * - 화살이 몸에 박히지 않음: 화살이 플레이어에게 명중하면 즉시 제거.
+ *
+ * config:
+ *   totem.enabled
+ *   death.keep-potion-effects
+ *   arrow.no-stick
+ */
+public class MiscRuleListener implements Listener {
+
+    private final DeruyPlugin plugin;
+    private final Map<UUID, List<PotionEffect>> storedEffects = new HashMap<>();
+
+    public MiscRuleListener(DeruyPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    // ---------------- 토템작동 ----------------
+
+    @EventHandler
+    public void onResurrect(EntityResurrectEvent event) {
+        boolean totemEnabled = plugin.getConfig().getBoolean("totem.enabled", true);
+        if (!totemEnabled) {
+            event.setCancelled(true);
+        }
+    }
+
+    // ---------------- 사망시 포션이팩트 유지 ----------------
+
+    @EventHandler
+    public void onDeath(PlayerDeathEvent event) {
+        if (!plugin.getConfig().getBoolean("death.keep-potion-effects", true)) return;
+
+        Player player = event.getEntity();
+        storedEffects.put(player.getUniqueId(), new ArrayList<>(player.getActivePotionEffects()));
+    }
+
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
+        if (!plugin.getConfig().getBoolean("death.keep-potion-effects", true)) return;
+
+        Player player = event.getPlayer();
+        List<PotionEffect> effects = storedEffects.remove(player.getUniqueId());
+        if (effects == null) return;
+
+        for (PotionEffect effect : effects) {
+            player.addPotionEffect(effect);
+        }
+    }
+
+    // ---------------- 화살이 몸에 박히지 않음 ----------------
+
+    @EventHandler
+    public void onProjectileHit(ProjectileHitEvent event) {
+        if (!plugin.getConfig().getBoolean("arrow.no-stick", true)) return;
+        if (!(event.getEntity() instanceof Arrow arrow)) return;
+        if (!(event.getHitEntity() instanceof Player)) return;
+
+        plugin.getServer().getScheduler().runTask(plugin, arrow::remove);
+    }
+}
