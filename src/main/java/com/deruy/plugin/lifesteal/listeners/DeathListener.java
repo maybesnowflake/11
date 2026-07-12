@@ -37,12 +37,16 @@ public class DeathListener implements Listener {
         Player victim = event.getEntity();
         Player killer = victim.getKiller();
 
-        // 사망시 -1 하트 (0하트 도달시 LifeStealManager 내부에서 밴 처리)
-        plugin.getLifeStealManager().removeHeart(victim);
+        boolean naturalDeathRemovesHeart = plugin.getConfig()
+                .getBoolean("lifesteal.natural-death-removes-heart", false);
+
+        // PVP 사망이거나, "자연사도 하트 깎임" 옵션이 켜져있으면 -1 하트
+        if (killer != null || naturalDeathRemovesHeart) {
+            plugin.getLifeStealManager().removeHeart(victim);
+        }
 
         if (killer != null) {
             plugin.getLifeStealManager().addHeart(killer);
             plugin.getBountyManager().onKill(killer, victim);
         }
     }
-}
