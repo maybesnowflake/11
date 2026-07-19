@@ -2,6 +2,7 @@ package com.deruy.plugin.voicechat;
 
 import be.tarsos.dsp.AudioEvent;
 import be.tarsos.dsp.PitchShifter;
+import be.tarsos.dsp.io.TarsosDSPAudioFormat;
 import de.maxhenkel.voicechat.api.VoicechatApi;
 import de.maxhenkel.voicechat.api.VoicechatPlugin;
 import de.maxhenkel.voicechat.api.events.EventRegistration;
@@ -9,7 +10,6 @@ import de.maxhenkel.voicechat.api.events.MicrophonePacketEvent;
 import de.maxhenkel.voicechat.api.opus.OpusDecoder;
 import de.maxhenkel.voicechat.api.opus.OpusEncoder;
 
-import be.tarsos.dsp.io.TarsosDSPAudioFormat;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -17,11 +17,11 @@ import java.util.logging.Logger;
 
 /**
  * 투명화 상태인 플레이어의 마이크 오디오를 가로채서
- * 고정 피치 다운시프트(기본 -6반음, 성인 남성 저음 느낌)를 적용하는
+ * 고정 피치 다운시프트(기본 -6반음, 성인 남성 저음 느낌 = "오토튠")를 적용하는
  * SimpleVoiceChat 서버 플러그인.
  *
- * 투명화가 아닌 평소 상태에서는 아무 처리도 하지 않고 그대로 통과시켜
- * 서버 부하를 최소화함.
+ * VoiceFeatureSettings.isAutotuneEnabled()로 서버 전체 온/오프 제어.
+ * 꺼져 있거나 투명화가 아니면 원본 오디오를 그대로 통과시켜 서버 부하를 최소화한다.
  */
 public class DeruyVoicePitchPlugin implements VoicechatPlugin {
 
@@ -36,6 +36,7 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
     private static final Logger LOGGER = Logger.getLogger("DeruyVoicePitchPlugin");
 
     private final InvisibilityVoiceEffectTracker tracker;
+    private final VoiceFeatureSettings settings;
 
     // 플레이어별 상태. opus 코덱과 피치 이펙트는 프레임 간 연속성이 있어야 하므로
     // 매 패킷마다 새로 만들지 않고 재사용해야 함.
@@ -45,8 +46,9 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
 
     private VoicechatApi api;
 
-    public DeruyVoicePitchPlugin(InvisibilityVoiceEffectTracker tracker) {
+    public DeruyVoicePitchPlugin(InvisibilityVoiceEffectTracker tracker, VoiceFeatureSettings settings) {
         this.tracker = tracker;
+        this.settings = settings;
     }
 
     @Override
@@ -65,6 +67,10 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
     }
 
     private void onMicrophonePacket(MicrophonePacketEvent event) {
+        if (!settings.isAutotuneEnabled()) {
+            return; // 서버 전체 설정으로 꺼져 있으면 원본 그대로 통과 (즉시 반영됨)
+        }
+
         if (event.getSenderConnection() == null || event.getSenderConnection().getPlayer() == null) {
             return;
         }
@@ -99,7 +105,7 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
             event.getPacket().setOpusEncodedData(newOpus);
         } catch (Exception e) {
             // 처리 실패해도 목소리가 아예 끊기는 것보단 원본 오디오가 그대로 나가는 게 나음.
-            LOGGER.log(Level.WARNING, "투명화 피치 이펙트 처리 중 오류 (플레이어: " + playerId + ")", e);
+            LOGGER.log(Level.WARNING, "투명화 오토튠 이펙트 처리 중 오류 (플레이어: " + playerId + ")", e);
         }
     }
 

@@ -43,7 +43,7 @@ public class TridentListener implements Listener {
 
         if (plugin.getLifeStealManager().isCombatTagged(player.getUniqueId())) {
             event.setCancelled(true);
-            player.sendMessage(plugin.getMessage("trident-blocked", "&c전투 중에는 트라이던트 순간이동을 사용할 수 없습니다."));
+            player.sendMessage("§c전투 중에는 트라이던트 순간이동을 사용할 수 없습니다.");
         }
     }
 }

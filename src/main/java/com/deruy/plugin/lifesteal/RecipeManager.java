@@ -77,7 +77,6 @@ public class RecipeManager {
         ItemStack result = buildResultItem(recipeName, resultMaterial, section);
 
         NamespacedKey key = new NamespacedKey(plugin, recipeName);
-        Bukkit.removeRecipe(key); // 리로드시 중복등록 예외 방지 (없으면 조용히 무시됨)
         ShapedRecipe recipe = new ShapedRecipe(key, result);
         recipe.shape(shapeList.get(0), shapeList.get(1), shapeList.get(2));
 

@@ -36,8 +36,7 @@ public class NetheriteRecipeBlockListener implements Listener {
         if (result.getType().name().startsWith("NETHERITE_")) {
             event.setResult(null);
             for (HumanEntity viewer : event.getViewers()) {
-                viewer.sendMessage(plugin.getMessage("netherite-craft-blocked",
-                        "&c현재 네더라이트 장비 제작이 비활성화되어 있습니다. (기존 장비는 사용 가능)"));
+                viewer.sendMessage("§c현재 네더라이트 장비 제작이 비활성화되어 있습니다. (기존 장비는 사용 가능)");
             }
         }
     }

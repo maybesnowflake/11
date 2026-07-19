@@ -21,6 +21,8 @@ public class LifeStealManager {
     private static final double HEART_VALUE = 2.0; // 1하트 = 2 체력포인트
 
     private final DeruyPlugin plugin;
+    private final double minHealth; // 하트 하한선 (도달시 밴)
+    private final double maxHealth; // 하트 상한선 (도달시 addHeart 실패 반환)
 
     // 컴벳태그: uuid -> 태그 만료 시각(epoch millis)
     private final Map<UUID, Long> combatTagged = new HashMap<>();
@@ -31,6 +33,8 @@ public class LifeStealManager {
     public LifeStealManager(DeruyPlugin plugin) {
         this.plugin = plugin;
         this.systemEnabled = plugin.getConfig().getBoolean("lifesteal.enabled", true);
+        this.minHealth = plugin.getConfig().getInt("lifesteal.heart-limits.min-hearts", 1) * HEART_VALUE;
+        this.maxHealth = plugin.getConfig().getInt("lifesteal.heart-limits.max-hearts", 10) * HEART_VALUE;
     }
 
     // ---------------- 시스템 on/off ----------------
@@ -56,7 +60,6 @@ public class LifeStealManager {
         var attr = player.getAttribute(Attribute.MAX_HEALTH);
         if (attr == null) return false;
 
-        double maxHealth = getMaxHealth(player);
         if (attr.getBaseValue() >= maxHealth) {
             return false; // 이미 상한선 도달, 추가 불가
         }
@@ -77,7 +80,6 @@ public class LifeStealManager {
         var attr = player.getAttribute(Attribute.MAX_HEALTH);
         if (attr == null) return;
 
-        double minHealth = getMinHealth();
         double newMax = attr.getBaseValue() - (HEART_VALUE * amount);
 
         if (newMax <= minHealth) {
@@ -93,18 +95,11 @@ public class LifeStealManager {
     }
 
     public double getMaxHealth() {
-        return plugin.getConfig().getInt("lifesteal.heart-limits.max-hearts", 10) * HEART_VALUE;
-    }
-
-    /** 역할별 max-hearts override가 있으면 그걸, 없으면 전역 기본값을 사용 */
-    public double getMaxHealth(Player player) {
-        int roleOverride = plugin.getRoleManager().getMaxHeartsOverride(player);
-        if (roleOverride > 0) return roleOverride * HEART_VALUE;
-        return getMaxHealth();
+        return maxHealth;
     }
 
     public double getMinHealth() {
-        return plugin.getConfig().getInt("lifesteal.heart-limits.min-hearts", 1) * HEART_VALUE;
+        return minHealth;
     }
 
     private void banZeroHeart(Player player) {
@@ -114,9 +109,9 @@ public class LifeStealManager {
         );
         player.kickPlayer(kickMessage);
 
-        org.bukkit.BanList<org.bukkit.profile.PlayerProfile> banList =
-                Bukkit.getBanList(org.bukkit.BanList.Type.PROFILE);
-        banList.addBan(player.getPlayerProfile(), "0 하트 도달", (java.time.Instant) null, "LifeSteal");
+        Bukkit.getBanList(org.bukkit.BanList.Type.NAME).addBan(
+                player.getName(), "0 하트 도달", null, "LifeSteal"
+        );
     }
 
     // ---------------- 컴벳태그 ----------------

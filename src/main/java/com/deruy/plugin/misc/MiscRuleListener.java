@@ -96,15 +96,8 @@ public class MiscRuleListener implements Listener {
     public void onProjectileHit(ProjectileHitEvent event) {
         if (!plugin.getConfig().getBoolean("arrow.no-stick", true)) return;
         if (!(event.getEntity() instanceof Arrow arrow)) return;
-        if (!(event.getHitEntity() instanceof org.bukkit.entity.LivingEntity living)) return;
+        if (!(event.getHitEntity() instanceof Player)) return;
 
-        // 화살 엔티티 자체는 즉시 제거 (지연 없이)
-        arrow.remove();
-
-        // 진짜 원인: 화살 투사체를 지워도 "맞은 대상의 몸에 박힌 화살 개수" 카운트는 별도로
-        // 유지되는 값이라 지워지지 않음. 이 카운트를 0으로 리셋해야 시각적으로도 안 박힌다.
-        living.setArrowsInBody(0);
-        // 데미지 처리 직후 한번 더 증가할 수 있어 다음 틱에도 한번 더 리셋
-        plugin.getServer().getScheduler().runTask(plugin, () -> living.setArrowsInBody(0));
+        plugin.getServer().getScheduler().runTask(plugin, arrow::remove);
     }
 }

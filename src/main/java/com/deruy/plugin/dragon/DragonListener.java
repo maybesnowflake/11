@@ -100,7 +100,6 @@ public class DragonListener implements Listener {
     @EventHandler
     public void onDragonEggMove(org.bukkit.event.block.BlockFromToEvent event) {
         if (event.getBlock().getType() != Material.DRAGON_EGG) return;
-        if (!plugin.getConfig().getBoolean("dragon.egg.block-teleport", true)) return;
         event.setCancelled(true);
     }
 
@@ -113,9 +112,7 @@ public class DragonListener implements Listener {
 
         // 좌클릭(공격 시작)은 어차피 위 BlockFromToEvent에서 막히지만, 안내 메시지를 위해 여기서도 취소
         if (event.getAction() == Action.LEFT_CLICK_BLOCK) {
-            if (plugin.getConfig().getBoolean("dragon.egg.block-teleport", true)) {
-                event.setCancelled(true);
-            }
+            event.setCancelled(true);
             return;
         }
 
@@ -127,7 +124,7 @@ public class DragonListener implements Listener {
         Player player = event.getPlayer();
 
         if (plugin.getLifeStealManager().isCombatTagged(player.getUniqueId())) {
-            player.sendMessage(plugin.getMessage("dragon-egg-combat-blocked", "&c전투 중에는 드래곤알을 획득할 수 없습니다."));
+            player.sendMessage("§c전투 중에는 드래곤알을 획득할 수 없습니다.");
             return;
         }
 
@@ -139,7 +136,7 @@ public class DragonListener implements Listener {
         Location eggLoc = eggBlock.getLocation();
         int requiredSeconds = plugin.getConfig().getInt("dragon.egg.acquire-hold-seconds", 30);
 
-        player.sendMessage(plugin.getMessage("dragon-egg-acquiring", "&5드래곤알을 획득하는 중입니다... {seconds}초간 가만히 있으세요.").replace("{seconds}", String.valueOf(requiredSeconds)));
+        player.sendMessage("§5드래곤알을 획득하는 중입니다... " + requiredSeconds + "초간 가만히 있으세요.");
 
         final int[] elapsed = {0};
         BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
@@ -147,7 +144,7 @@ public class DragonListener implements Listener {
                     || player.getLocation().distance(eggLoc) > 4
                     || eggBlock.getType() != Material.DRAGON_EGG
                     || plugin.getLifeStealManager().isCombatTagged(player.getUniqueId())) {
-                cancelChanneling(player, plugin.getMessage("dragon-egg-acquire-cancelled", "&c드래곤알 획득이 중단되었습니다."));
+                cancelChanneling(player, "§c드래곤알 획득이 중단되었습니다.");
                 return;
             }
 
@@ -155,7 +152,7 @@ public class DragonListener implements Listener {
             if (elapsed[0] >= requiredSeconds) {
                 eggBlock.setType(Material.AIR);
                 player.getInventory().addItem(new ItemStack(Material.DRAGON_EGG));
-                player.sendMessage(plugin.getMessage("dragon-egg-acquired", "&5&l드래곤알을 획득했습니다!"));
+                player.sendMessage("§5§l드래곤알을 획득했습니다!");
                 cancelChanneling(player, null);
             }
         }, 20L, 20L);

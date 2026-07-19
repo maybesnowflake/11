@@ -3,7 +3,9 @@ package com.deruy.plugin.bounty;
 import com.deruy.plugin.DeruyPlugin;
 import com.deruy.plugin.events.GameEvent;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -24,10 +26,6 @@ public class BountyManager implements GameEvent {
 
     public BountyManager(DeruyPlugin plugin) {
         this.plugin = plugin;
-        bounties.putAll(plugin.getDataStore().loadBountyPairs());
-        if (!bounties.isEmpty()) {
-            plugin.getLogger().info("바운티 페어 " + (bounties.size() / 2) + "쌍을 data.yml에서 불러왔습니다.");
-        }
     }
 
     @Override
@@ -58,7 +56,6 @@ public class BountyManager implements GameEvent {
     public void pair(Player a, Player b) {
         bounties.put(a.getUniqueId(), b.getUniqueId());
         bounties.put(b.getUniqueId(), a.getUniqueId());
-        plugin.getDataStore().saveBountyPair(a.getUniqueId(), b.getUniqueId());
         a.sendMessage("§4[바운티] §e당신의 타겟: " + b.getName());
         b.sendMessage("§4[바운티] §e당신의 타겟: " + a.getName());
     }
@@ -68,7 +65,6 @@ public class BountyManager implements GameEvent {
         if (targetId != null) {
             bounties.remove(targetId);
         }
-        plugin.getDataStore().removeBountyPair(a.getUniqueId());
     }
 
     public UUID getTarget(Player player) {
@@ -80,26 +76,17 @@ public class BountyManager implements GameEvent {
         UUID target = bounties.get(killer.getUniqueId());
         if (target == null || !target.equals(victim.getUniqueId())) return;
 
-        String deathMessage = plugin.getMessage("bounty-target-killed",
-                "&4&l[바운티] &a{killer}님이 타겟 {victim}님을 처치했습니다!")
-                .replace("{killer}", killer.getName())
-                .replace("{victim}", victim.getName());
-        Bukkit.broadcastMessage(deathMessage);
+        Bukkit.broadcastMessage("§4§l[바운티] §a" + killer.getName() + "님이 타겟 " + victim.getName() + "님을 처치하고 보상을 획득했습니다!");
 
-        var items = plugin.getSupplyChestRegistry().rollRewards(
-                plugin.getConfig().getStringList("bounty.reward-items"), plugin.getLogger());
-        for (var item : items) {
-            var leftover = killer.getInventory().addItem(item);
-            leftover.values().forEach(remain -> killer.getWorld().dropItemNaturally(killer.getLocation(), remain));
+        for (String name : plugin.getConfig().getStringList("bounty.reward-items")) {
+            try {
+                Material mat = Material.valueOf(name.toUpperCase());
+                killer.getInventory().addItem(new ItemStack(mat));
+            } catch (IllegalArgumentException ignored) {
+            }
         }
 
         bounties.remove(killer.getUniqueId());
         bounties.remove(victim.getUniqueId());
-        plugin.getDataStore().removeBountyPair(killer.getUniqueId());
-
-        if (plugin.getConfig().getBoolean("bounty.end-on-death", false)) {
-            Bukkit.broadcastMessage("§4§l[바운티] §e바운티 대상이 사망하여 이벤트가 종료됩니다.");
-            stop();
-        }
     }
 }

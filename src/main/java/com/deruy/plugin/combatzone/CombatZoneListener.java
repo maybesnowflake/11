@@ -63,7 +63,7 @@ public class CombatZoneListener implements Listener {
 
         if (isEnteringProtectedRegion(from, to)) {
             event.setCancelled(true);
-            player.sendMessage(plugin.getMessage("combat-zone-blocked", "&c전투 중에는 이 구역에 들어갈 수 없습니다."));
+            player.sendMessage("§c전투 중에는 이 구역에 들어갈 수 없습니다.");
         }
     }
 

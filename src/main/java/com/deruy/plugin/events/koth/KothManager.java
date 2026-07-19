@@ -29,24 +29,13 @@ public class KothManager implements GameEvent {
     private final Map<String, KothZone> zones = new LinkedHashMap<>();
     private final Set<String> activeZoneIds = new LinkedHashSet<>();
 
+    private int requiredTicks = 20 * 60; // 기본 60초
     private BukkitTask task;
 
     public KothManager(DeruyPlugin plugin) {
         this.plugin = plugin;
         this.enabled = plugin.getConfig().getBoolean("koth.enabled", false);
-        loadZonesFromDataStore();
-    }
-
-    private void loadZonesFromDataStore() {
-        for (var entry : plugin.getDataStore().loadKothZones().entrySet()) {
-            KothZone zone = getOrCreateZone(entry.getKey());
-            org.bukkit.Location[] corners = entry.getValue();
-            if (corners[0] != null) zone.setCorner1(corners[0]);
-            if (corners[1] != null) zone.setCorner2(corners[1]);
-        }
-        if (!zones.isEmpty()) {
-            plugin.getLogger().info("KOTH 구역 " + zones.size() + "개를 data.yml에서 불러왔습니다.");
-        }
+        this.requiredTicks = plugin.getConfig().getInt("koth.required-seconds", 60) * 20;
     }
 
     @Override
@@ -77,7 +66,6 @@ public class KothManager implements GameEvent {
 
     public boolean removeZone(String id) {
         activeZoneIds.remove(id);
-        plugin.getDataStore().removeKothZone(id);
         return zones.remove(id) != null;
     }
 
@@ -90,16 +78,13 @@ public class KothManager implements GameEvent {
     }
 
     public void setRequiredSeconds(int seconds) {
+        this.requiredTicks = seconds * 20;
         plugin.getConfig().set("koth.required-seconds", seconds);
         plugin.saveConfig();
     }
 
     public int getRequiredSeconds() {
-        return plugin.getConfig().getInt("koth.required-seconds", 60);
-    }
-
-    private int getRequiredTicks() {
-        return getRequiredSeconds() * 20;
+        return requiredTicks / 20;
     }
 
     // ---------------- GameEvent (전체 구역 대상) ----------------
@@ -224,7 +209,6 @@ public class KothManager implements GameEvent {
             zone.setHeldTicks(zone.getHeldTicks() + 20);
         }
 
-        int requiredTicks = getRequiredTicks();
         int remaining = (requiredTicks - zone.getHeldTicks()) / 20;
         if (remaining > 0 && remaining % 10 == 0) {
             playerInside.sendMessage("§6[KOTH-" + zone.getId() + "] §e점령까지 " + remaining + "초 남았습니다.");
@@ -232,7 +216,7 @@ public class KothManager implements GameEvent {
 
         if (zone.getHeldTicks() >= requiredTicks) {
             Bukkit.broadcastMessage("§6§l[KOTH-" + zone.getId() + "] §a" + playerInside.getName() + "님이 거점을 점령했습니다! 승리!");
-            giveRewards(playerInside);
+            // TODO: 여기에 보상 지급 로직 연결 (config 커맨드 실행 등)
             zone.resetProgress();
             activeZoneIds.remove(zone.getId()); // 점령된 구역은 자동으로 비활성화(off)
             Bukkit.broadcastMessage("§7[KOTH-" + zone.getId() + "] §7이 구역은 비활성화되었습니다. (다시 열려면 /koth start " + zone.getId() + ")");
@@ -241,18 +225,6 @@ public class KothManager implements GameEvent {
                 task.cancel();
                 task = null;
             }
-        }
-    }
-
-    private void giveRewards(Player winner) {
-        var rewardEntries = plugin.getConfig().getStringList("koth.reward-items");
-        var items = plugin.getSupplyChestRegistry().rollRewards(rewardEntries, plugin.getLogger());
-        for (var item : items) {
-            var leftover = winner.getInventory().addItem(item);
-            leftover.values().forEach(remain -> winner.getWorld().dropItemNaturally(winner.getLocation(), remain));
-        }
-        if (!items.isEmpty()) {
-            winner.sendMessage("§6[KOTH] §e점령 보상을 획득했습니다!");
         }
     }
 

@@ -7,7 +7,6 @@ import com.deruy.plugin.bounty.BountyManager;
 import com.deruy.plugin.bounty.commands.BountyCommand;
 import com.deruy.plugin.combatzone.CombatZoneListener;
 import com.deruy.plugin.combatzone.CombatZoneVisualizer;
-import com.deruy.plugin.data.DataStore;
 import com.deruy.plugin.dragon.DragonListener;
 import com.deruy.plugin.events.EventManager;
 import com.deruy.plugin.events.commands.DeruyEventCommand;
@@ -26,17 +25,20 @@ import com.deruy.plugin.lifesteal.listeners.RestrictionListener;
 import com.deruy.plugin.lifesteal.listeners.TridentListener;
 import com.deruy.plugin.locatorbar.LocatorBarManager;
 import com.deruy.plugin.misc.MiscRuleListener;
-import com.deruy.plugin.misc.commands.DeruyReloadCommand;
 import com.deruy.plugin.misc.commands.DeruyTimeCommand;
-import com.deruy.plugin.role.RoleManager;
-import com.deruy.plugin.role.RolePvpListener;
-import com.deruy.plugin.role.commands.PvpCommand;
 import com.deruy.plugin.roleeffect.RoleEffectScheduler;
 import com.deruy.plugin.supplydrop.SupplyChestListener;
 import com.deruy.plugin.supplydrop.SupplyChestRegistry;
 import com.deruy.plugin.supplydrop.SupplyDropManager;
 import com.deruy.plugin.supplydrop.SuperSupplyDropManager;
 import com.deruy.plugin.supplydrop.commands.SupplyDropCommand;
+import com.deruy.plugin.voicechat.DeruyVoicePitchPlugin;
+import com.deruy.plugin.voicechat.InvisibilityVoiceEffectTracker;
+import com.deruy.plugin.voicechat.KillLogObfuscationListener;
+import com.deruy.plugin.voicechat.VoiceFeatureSettings;
+import com.deruy.plugin.voicechat.commands.AutotuneCommand;
+import com.deruy.plugin.voicechat.commands.KillLogCommand;
+import de.maxhenkel.voicechat.api.BukkitVoicechatService;
 import net.luckperms.api.LuckPerms;
 import net.luckperms.api.LuckPermsProvider;
 import net.luckperms.api.model.user.User;
@@ -58,10 +60,12 @@ public class DeruyPlugin extends JavaPlugin {
     private RoleEffectScheduler roleEffectScheduler;
     private SupplyChestRegistry supplyChestRegistry;
     private CombatZoneVisualizer combatZoneVisualizer;
-    private DataStore dataStore;
-    private RoleManager roleManager;
+    private VoiceFeatureSettings voiceFeatureSettings;
+    private InvisibilityVoiceEffectTracker invisibilityVoiceEffectTracker;
+    private DeruyVoicePitchPlugin voicePitchPlugin;
 
     private boolean worldGuardPresent;
+    private boolean voiceChatPresent;
 
     @Override
     public void onEnable() {
@@ -70,7 +74,6 @@ public class DeruyPlugin extends JavaPlugin {
         worldGuardPresent = Bukkit.getPluginManager().getPlugin("WorldGuard") != null;
 
         // ---------------- 매니저 초기화 ----------------
-        this.dataStore = new DataStore(this); // 다른 매니저 생성자가 참조하므로 제일 먼저
         this.lifeStealManager = new LifeStealManager(this);
         this.recipeManager = new RecipeManager(this);
         this.eventManager = new EventManager();
@@ -83,7 +86,8 @@ public class DeruyPlugin extends JavaPlugin {
         this.roleEffectScheduler = new RoleEffectScheduler(this);
         this.supplyChestRegistry = new SupplyChestRegistry();
         this.combatZoneVisualizer = new CombatZoneVisualizer(this);
-        this.roleManager = new RoleManager(this);
+        this.voiceFeatureSettings = new VoiceFeatureSettings(this);
+        this.invisibilityVoiceEffectTracker = new InvisibilityVoiceEffectTracker();
 
         eventManager.register(kothManager);
         eventManager.register(locatorBarManager);
@@ -108,7 +112,8 @@ public class DeruyPlugin extends JavaPlugin {
         pm.registerEvents(new MiscRuleListener(this), this);           // 토템/사망이펙트/화살
         pm.registerEvents(new BingoListener(this), this);
         pm.registerEvents(new SupplyChestListener(this), this);        // 서플라이드랍 상자 즉시지급
-        pm.registerEvents(new RolePvpListener(this), this);            // 역할별 PVP 허용여부
+        pm.registerEvents(invisibilityVoiceEffectTracker, this);       // 투명화 상태 추적 (오토튠 이펙트용)
+        pm.registerEvents(new KillLogObfuscationListener(this), this); // 투명 상태 킬로그 노이즈 표시
 
         if (worldGuardPresent) {
             pm.registerEvents(new CombatZoneListener(this), this);
@@ -116,6 +121,23 @@ public class DeruyPlugin extends JavaPlugin {
             getLogger().info("WorldGuard 감지됨: 컴벳존 차단 + 경계 시각화 기능 활성화.");
         } else {
             getLogger().warning("WorldGuard가 없어 컴벳존 차단 기능이 비활성화됩니다.");
+        }
+
+        // ---------------- SimpleVoiceChat 연동 (오토튠 이펙트) ----------------
+        voiceChatPresent = Bukkit.getPluginManager().getPlugin("voicechat") != null;
+        if (voiceChatPresent) {
+            this.voicePitchPlugin = new DeruyVoicePitchPlugin(invisibilityVoiceEffectTracker, voiceFeatureSettings);
+            invisibilityVoiceEffectTracker.setVoicePlugin(voicePitchPlugin);
+
+            var provider = Bukkit.getServicesManager().getRegistration(BukkitVoicechatService.class);
+            if (provider != null) {
+                provider.getProvider().registerPlugin(voicePitchPlugin);
+                getLogger().info("SimpleVoiceChat 감지됨: 투명화 오토튠 음성 이펙트 활성화.");
+            } else {
+                getLogger().warning("SimpleVoiceChat 서비스 등록을 찾을 수 없어 오토튠 이펙트가 비활성화됩니다.");
+            }
+        } else {
+            getLogger().warning("SimpleVoiceChat이 없어 오토튠 음성 이펙트가 비활성화됩니다.");
         }
 
         // pending #1,#2,#3 (토템부활금지/엔더진주금지/XRay탐지) 은
@@ -156,11 +178,14 @@ public class DeruyPlugin extends JavaPlugin {
         getCommand("combat").setTabCompleter(combatCmd);
 
         getCommand("deruytime").setExecutor(new DeruyTimeCommand());
-        getCommand("deruyreload").setExecutor(new DeruyReloadCommand(this));
 
-        var pvpCmd = new PvpCommand(this);
-        getCommand("pvp").setExecutor(pvpCmd);
-        getCommand("pvp").setTabCompleter(pvpCmd);
+        var autotuneCmd = new AutotuneCommand(this);
+        getCommand("autotune").setExecutor(autotuneCmd);
+        getCommand("autotune").setTabCompleter(autotuneCmd);
+
+        var killLogCmd = new KillLogCommand(this);
+        getCommand("killlog").setExecutor(killLogCmd);
+        getCommand("killlog").setTabCompleter(killLogCmd);
 
         // ---------------- 스케줄러 시작 ----------------
         roleEffectScheduler.start();
@@ -191,11 +216,8 @@ public class DeruyPlugin extends JavaPlugin {
             User user = api.getUserManager().getUser(player.getUniqueId());
             if (user == null) return false;
             if (user.getPrimaryGroup().equalsIgnoreCase(role)) return true;
-
-            // 상속된 그룹까지 전부 반영된 최종 권한 상태로 확인 (원시 노드만 보면 상속을 놓침)
-            return user.getCachedData().getPermissionData()
-                    .checkPermission("group." + role.toLowerCase())
-                    .asBoolean();
+            return user.getNodes().stream()
+                    .anyMatch(node -> node.getKey().equalsIgnoreCase("group." + role));
         } catch (IllegalStateException e) {
             return false; // LuckPerms 아직 준비 안 됨
         }
@@ -203,6 +225,10 @@ public class DeruyPlugin extends JavaPlugin {
 
     public boolean isWorldGuardPresent() {
         return worldGuardPresent;
+    }
+
+    public boolean isVoiceChatPresent() {
+        return voiceChatPresent;
     }
 
     public LifeStealManager getLifeStealManager() {
@@ -253,20 +279,11 @@ public class DeruyPlugin extends JavaPlugin {
         return combatZoneVisualizer;
     }
 
-    public DataStore getDataStore() {
-        return dataStore;
+    public VoiceFeatureSettings getVoiceFeatureSettings() {
+        return voiceFeatureSettings;
     }
 
-    public RoleManager getRoleManager() {
-        return roleManager;
-    }
-
-    /**
-     * config의 messages.<key> 경로에서 메시지를 읽어온다 (& 색상코드 자동변환).
-     * 매번 config를 직접 읽으므로 재시작 없이 config.yml 수정 + /deruyreload 만으로 즉시 반영됨.
-     */
-    public String getMessage(String key, String def) {
-        String raw = getConfig().getString("messages." + key, def);
-        return org.bukkit.ChatColor.translateAlternateColorCodes('&', raw);
+    public InvisibilityVoiceEffectTracker getInvisibilityVoiceEffectTracker() {
+        return invisibilityVoiceEffectTracker;
     }
 }

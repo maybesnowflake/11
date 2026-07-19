@@ -74,42 +74,34 @@ combat-zone:
   visualize-enabled: true
   visualize-radius: 8
 
+# 투명화 상태 유저 대상 부가 이펙트 (SimpleVoiceChat 필요, /autotune·/killlog 명령어로 인게임에서 즉시 온오프)
+voice-effects:
+  # 투명화 중 마이크 음성에 피치 다운시프트("오토튠") 적용 여부
+  autotune-enabled: true
+  # 투명화 상태로 킬을 냈을 때 킬로그(사망메시지)의 킬러 이름을 하얀 노이즈(§k)로 표시할지 여부
+  killlog-obfuscation-enabled: true
+
 # 커스텀 로케이터바 (액션바 기반, 은신/투명 무시하고 항상 표시)
 locatorbar:
   enabled: false
   update-interval-ticks: 20
-  display-name: "Super LocatorBar"
 
 # KOTH 거점점령 (다중구역, 선택적 시작 지원)
-# reward-items는 서플라이드랍과 동일하게 "아이템명:확률" 형식 (확률 생략시 100%)
 koth:
   enabled: false
   required-seconds: 60
-  reward-items:
-    - "DIAMOND:0.5"
-    - "GOLDEN_APPLE:0.3"
 
-# 빙고 이벤트 (완성시 승리팀 소속 전원에게 reward-items 지급)
+# 빙고 이벤트
 bingo:
   size: 5
-  # 여러 줄수를 동시에 목표로 설정 가능. 각 줄수 달성마다 방송+보상, 마지막 값이 "최종 목표".
-  line-milestones: [1, 3, 5]
-  # 최종 목표(line-milestones의 가장 큰 값) 달성시 이벤트를 자동종료할지 여부
-  end-on-bingo: true
+  lines-required: 1
   excluded-biomes: []
   excluded-items: []
-  reward-items:
-    - "DIAMOND:0.5"
-    - "NETHERITE_INGOT:0.2"
 
 # 일반 서플라이드랍 (매일 지정 시간대 안에서 아무도 모르는 랜덤시각 자동실행)
 # 트리거되면 상자 1개가 아니라 duration-minutes 동안 count-min~count-max 개가 흩뿌려짐
 # reward-items는 "아이템명" 또는 "아이템명:확률" 형식. 확률 생략시 100%로 취급.
 # 예: "DIAMOND:0.1" = 그 상자에 10% 확률로 다이아 1개 포함
-#
-# 스폰 구역: 인게임에서 /supplydrop setregion 1, /supplydrop setregion 2 로
-# 두 코너(월드 포함)를 지정하면 그 구역 안에서만 스폰됨 (data.yml에 저장, 재시작해도 유지).
-# 구역을 지정 안 하면 아래 center-x/z + radius 방식으로 폴백 (첫번째 월드 기준).
 supplydrop:
   normal:
     window-start-hour: 15
@@ -127,7 +119,6 @@ supplydrop:
 
   # 슈퍼 서플라이드랍 (하루 여러개의 "정확한 시간대"를 직접 지정)
   # 트리거되면 duration-minutes 동안 count-min~count-max 개의 고급 상자가 흩뿌려짐
-  # 스폰 구역: /supersupplydrop setregion 1, /supersupplydrop setregion 2 로 별도 지정 가능
   super:
     windows:
       - "12:45-13:00"
@@ -145,10 +136,8 @@ supplydrop:
 
 # 바운티 이벤트
 bounty:
-  # 바운티 대상이 사망(성공)하면 이벤트 전체를 자동종료할지 여부
-  end-on-death: false
   reward-items:
-    - "DIAMOND_BLOCK:1.0"
+    - DIAMOND_BLOCK
 
 # 엔더드래곤 / 드래곤알
 dragon:
@@ -159,8 +148,6 @@ dragon:
     fixed-y: 65
     fixed-z: 0
     acquire-hold-seconds: 30
-    # 드래곤알의 텔레포트 능력 차단 여부. false로 하면 바닐라처럼 다시 순간이동함.
-    block-teleport: true
 
 # 토템 작동 여부 (기본 true = 정상 작동)
 totem:
@@ -191,29 +178,3 @@ role-effects:
   #     effect: "LUCK"
   #     amplifier: 0
   #     duration-seconds: 86400
-
-# 역할(LuckPerms 그룹)별 개별 설정. 여기 등록된 이름이 /pvp 커맨드, role-effects,
-# 역할별 하트상한 전부에서 공통으로 쓰임. max-hearts 생략시 전역 heart-limits.max-hearts 사용.
-# pvp-allowed 생략시 기본 true(허용).
-roles:
-  FWN:
-    max-hearts: 13
-    pvp-allowed: true
-  LV:
-    max-hearts: 20
-    pvp-allowed: true
-
-# 모든 제한 기능에서 출력되는 메시지를 여기서 자유롭게 수정 가능 (& 색상코드 지원)
-messages:
-  ender-pearl-tp-blocked: "&c엔더진주로 인한 텔레포트가 금지되어 있습니다. (던지는 것은 가능)"
-  elytra-blocked: "&c전투 중에는 겉날개로 활공할 수 없습니다."
-  ender-chest-blocked: "&c전투 중에는 엔더상자를 사용할 수 없습니다."
-  trident-blocked: "&c전투 중에는 트라이던트 순간이동을 사용할 수 없습니다."
-  netherite-craft-blocked: "&c현재 네더라이트 장비 제작이 비활성화되어 있습니다. (기존 장비는 사용 가능)"
-  combat-zone-blocked: "&c전투 중에는 이 구역에 들어갈 수 없습니다."
-  dragon-egg-combat-blocked: "&c전투 중에는 드래곤알을 획득할 수 없습니다."
-  dragon-egg-acquiring: "&5드래곤알을 획득하는 중입니다... {seconds}초간 가만히 있으세요."
-  dragon-egg-acquired: "&5&l드래곤알을 획득했습니다!"
-  dragon-egg-acquire-cancelled: "&c드래곤알 획득이 중단되었습니다."
-  pvp-blocked: "&c지금은 PVP가 금지되어 있습니다."
-  bounty-target-killed: "&4&l[바운티] &a{killer}님이 타겟 {victim}님을 처치했습니다!"

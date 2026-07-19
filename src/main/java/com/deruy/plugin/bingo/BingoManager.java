@@ -31,26 +31,18 @@ public class BingoManager implements GameEvent {
     private boolean running = false;
 
     private int size;
-    private List<Integer> lineMilestones = new ArrayList<>();
+    private int linesRequired;
     private List<BingoCell> board = new ArrayList<>();
 
     // 팀 이름 -> 완료된 칸 인덱스 집합
     private final Map<String, Set<Integer>> teamProgress = new HashMap<>();
     // 플레이어 -> 팀 이름 (간단한 내부 팀 배정)
     private final Map<String, String> playerTeams = new HashMap<>();
-    // 팀 -> 이미 방송한 마일스톤 줄 수 집합 (중복 알림 방지)
-    private final Map<String, Set<Integer>> announcedMilestones = new HashMap<>();
-    // 이벤트를 종료시킨(최종 목표 달성) 팀들
-    private final Set<String> finishedTeams = new HashSet<>();
+    // 이미 빙고를 달성한 팀 (중복 알림 방지)
+    private final Set<String> wonTeams = new HashSet<>();
 
     public BingoManager(DeruyPlugin plugin) {
         this.plugin = plugin;
-        for (var entry : plugin.getDataStore().loadBingoTeams().entrySet()) {
-            playerTeams.put(entry.getKey().toString(), entry.getValue());
-        }
-        if (!playerTeams.isEmpty()) {
-            plugin.getLogger().info("빙고 팀배정 " + playerTeams.size() + "건을 data.yml에서 불러왔습니다.");
-        }
     }
 
     @Override
@@ -63,7 +55,6 @@ public class BingoManager implements GameEvent {
     public void setTeam(Player player, String team) {
         playerTeams.put(player.getUniqueId().toString(), team);
         teamProgress.computeIfAbsent(team, t -> new HashSet<>());
-        plugin.getDataStore().saveBingoTeam(player.getUniqueId(), team);
     }
 
     public String getTeam(Player player) {
@@ -101,9 +92,7 @@ public class BingoManager implements GameEvent {
         if (running) return;
 
         size = plugin.getConfig().getInt("bingo.size", 5);
-        lineMilestones = new ArrayList<>(plugin.getConfig().getIntegerList("bingo.line-milestones"));
-        if (lineMilestones.isEmpty()) lineMilestones.add(plugin.getConfig().getInt("bingo.lines-required", 1));
-        Collections.sort(lineMilestones);
+        linesRequired = plugin.getConfig().getInt("bingo.lines-required", 1);
 
         List<BingoCell> pool = buildPool();
         Collections.shuffle(pool);
@@ -116,15 +105,13 @@ public class BingoManager implements GameEvent {
 
         board = new ArrayList<>(pool.subList(0, needed));
         teamProgress.clear();
-        announcedMilestones.clear();
-        finishedTeams.clear();
+        wonTeams.clear();
         for (String team : new HashSet<>(playerTeams.values())) {
             teamProgress.put(team, new HashSet<>());
         }
 
         running = true;
-        Bukkit.broadcastMessage("§d§l빙고 §e이벤트가 시작되었습니다! (" + size + "x" + size + ", 목표 줄수: "
-                + lineMilestones + ")");
+        Bukkit.broadcastMessage("§d§l빙고 §e이벤트가 시작되었습니다! (" + size + "x" + size + ", " + linesRequired + "줄 빙고)");
     }
 
     @Override
@@ -133,8 +120,7 @@ public class BingoManager implements GameEvent {
         running = false;
         board.clear();
         teamProgress.clear();
-        announcedMilestones.clear();
-        finishedTeams.clear();
+        wonTeams.clear();
         Bukkit.broadcastMessage("§d§l빙고 §e이벤트가 종료되었습니다.");
     }
 
@@ -163,7 +149,7 @@ public class BingoManager implements GameEvent {
     }
 
     private void markIfMatch(String team, Player player, BingoCell.Type type, String value) {
-        if (finishedTeams.contains(team)) return;
+        if (wonTeams.contains(team)) return;
 
         for (int i = 0; i < board.size(); i++) {
             BingoCell cell = board.get(i);
@@ -181,27 +167,6 @@ public class BingoManager implements GameEvent {
         Set<Integer> progress = teamProgress.get(team);
         if (progress == null) return;
 
-        int completedLines = countCompletedLines(progress);
-
-        // 아직 방송 안 한 마일스톤 중, 이번에 달성한 것들을 오름차순으로 전부 방송
-        Set<Integer> announced = announcedMilestones.computeIfAbsent(team, t -> new HashSet<>());
-        for (int milestone : lineMilestones) {
-            if (completedLines >= milestone && announced.add(milestone)) {
-                Bukkit.broadcastMessage("§d[빙고] §a" + team + "팀이 " + milestone + "줄을 달성했습니다!");
-                giveRewardsToTeam(team);
-            }
-        }
-
-        int finalMilestone = lineMilestones.get(lineMilestones.size() - 1);
-        boolean endOnBingo = plugin.getConfig().getBoolean("bingo.end-on-bingo", true);
-
-        if (completedLines >= finalMilestone && endOnBingo && finishedTeams.add(team)) {
-            Bukkit.broadcastMessage("§d§l[빙고] §a§l팀 '" + team + "'이(가) 최종 목표(" + finalMilestone + "줄)를 달성하여 빙고 이벤트가 종료됩니다!");
-            stop();
-        }
-    }
-
-    private int countCompletedLines(Set<Integer> progress) {
         int completedLines = 0;
 
         // 가로
@@ -229,24 +194,9 @@ public class BingoManager implements GameEvent {
         if (diag1) completedLines++;
         if (diag2) completedLines++;
 
-        return completedLines;
-    }
-
-    private void giveRewardsToTeam(String team) {
-        var rewardEntries = plugin.getConfig().getStringList("bingo.reward-items");
-
-        for (var onlinePlayer : Bukkit.getOnlinePlayers()) {
-            if (!team.equals(getTeam(onlinePlayer))) continue;
-
-            var items = plugin.getSupplyChestRegistry().rollRewards(rewardEntries, plugin.getLogger());
-            for (var item : items) {
-                var leftover = onlinePlayer.getInventory().addItem(item);
-                leftover.values().forEach(remain ->
-                        onlinePlayer.getWorld().dropItemNaturally(onlinePlayer.getLocation(), remain));
-            }
-            if (!items.isEmpty()) {
-                onlinePlayer.sendMessage("§d[빙고] §e빙고 승리 보상을 획득했습니다!");
-            }
+        if (completedLines >= linesRequired && wonTeams.add(team)) {
+            Bukkit.broadcastMessage("§d§l[빙고] §a§l팀 '" + team + "'이(가) " + linesRequired + "줄 빙고를 달성했습니다! 승리!");
+            // TODO: 보상 지급 로직 연결
         }
     }
 

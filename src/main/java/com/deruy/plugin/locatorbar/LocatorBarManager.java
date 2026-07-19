@@ -40,7 +40,7 @@ public class LocatorBarManager implements GameEvent {
 
         long interval = plugin.getConfig().getLong("locatorbar.update-interval-ticks", 20);
         task = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 0L, interval);
-        Bukkit.broadcastMessage("§b§l" + displayName() + " §e가 활성화되었습니다. (은신/투명 무시하고 항상 표시)");
+        Bukkit.broadcastMessage("§b§l로케이터바 §e가 활성화되었습니다. (은신/투명 무시하고 항상 표시)");
     }
 
     @Override
@@ -53,11 +53,7 @@ public class LocatorBarManager implements GameEvent {
             task.cancel();
             task = null;
         }
-        Bukkit.broadcastMessage("§b§l" + displayName() + " §e가 비활성화되었습니다.");
-    }
-
-    private String displayName() {
-        return plugin.getConfig().getString("locatorbar.display-name", "Super LocatorBar");
+        Bukkit.broadcastMessage("§b§l로케이터바 §e가 비활성화되었습니다.");
     }
 
     @Override

@@ -42,14 +42,14 @@ commands:
     description: 지정 플레이어에게 수동으로 컴벳태그 부여
     usage: /<command> <player> <초>
     permission: deruy.combat.admin
-  pvp:
-    description: 역할별 PVP 상태를 시간제한으로 변경
-    usage: /<command> <역할 [역할...]|ALL> on|off [시간]
-    permission: deruy.pvp.admin
-  deruyreload:
-    description: config.yml을 재시작 없이 다시 불러옴
-    usage: /<command>
-    permission: deruy.reload.admin
+  autotune:
+    description: 투명화 유저 대상 보이스챗 오토튠(피치 다운) 이펙트 온오프
+    usage: /<command> on|off|status
+    permission: deruy.autotune.admin
+  killlog:
+    description: 투명 상태 킬러 이름을 킬로그에서 노이즈 문자로 표시할지 온오프
+    usage: /<command> on|off|status
+    permission: deruy.killlog.admin
 
 permissions:
   deruy.lifesteal.admin:
@@ -68,7 +68,7 @@ permissions:
     default: true
   deruy.combat.admin:
     default: op
-  deruy.pvp.admin:
+  deruy.autotune.admin:
     default: op
-  deruy.reload.admin:
+  deruy.killlog.admin:
     default: op

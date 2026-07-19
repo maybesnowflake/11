@@ -27,7 +27,6 @@ public class EnderPearlListener implements Listener {
 
         Player player = event.getPlayer();
         event.setCancelled(true);
-        player.sendMessage(plugin.getMessage("ender-pearl-tp-blocked",
-                "&c엔더진주로 인한 텔레포트가 금지되어 있습니다. (던지는 것은 가능)"));
+        player.sendMessage("§c엔더진주로 인한 텔레포트가 금지되어 있습니다. (던지는 것은 가능)");
     }
 }

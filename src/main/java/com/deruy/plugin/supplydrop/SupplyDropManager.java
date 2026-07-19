@@ -117,45 +117,22 @@ public class SupplyDropManager implements GameEvent {
     }
 
     private void spawnSingleChest() {
-        Location[] region = plugin.getDataStore().loadSupplyRegion("normal");
-        Location loc;
+        World world = Bukkit.getWorlds().get(0);
+        double centerX = plugin.getConfig().getDouble("supplydrop.normal.center-x", 0);
+        double centerZ = plugin.getConfig().getDouble("supplydrop.normal.center-z", 0);
+        int radius = plugin.getConfig().getInt("supplydrop.normal.radius", 200);
 
-        if (region != null) {
-            loc = randomLocationInRegion(region[0], region[1]);
-        } else {
-            World world = Bukkit.getWorlds().get(0);
-            double centerX = plugin.getConfig().getDouble("supplydrop.normal.center-x", 0);
-            double centerZ = plugin.getConfig().getDouble("supplydrop.normal.center-z", 0);
-            int radius = plugin.getConfig().getInt("supplydrop.normal.radius", 200);
+        Random random = ThreadLocalRandom.current();
+        double x = centerX + (random.nextDouble() * 2 - 1) * radius;
+        double z = centerZ + (random.nextDouble() * 2 - 1) * radius;
+        int y = world.getHighestBlockYAt((int) x, (int) z) + 1;
 
-            Random random = ThreadLocalRandom.current();
-            double x = centerX + (random.nextDouble() * 2 - 1) * radius;
-            double z = centerZ + (random.nextDouble() * 2 - 1) * radius;
-            int y = world.getHighestBlockYAt((int) x, (int) z) + 1;
-            loc = new Location(world, x, y, z);
-        }
-
+        Location loc = new Location(world, x, y, z);
         Block block = loc.getBlock();
         block.setType(Material.CHEST);
 
         List<String> rewardEntries = plugin.getConfig().getStringList("supplydrop.normal.reward-items");
         List<ItemStack> rolled = plugin.getSupplyChestRegistry().rollRewards(rewardEntries, plugin.getLogger());
         plugin.getSupplyChestRegistry().register(block.getLocation(), rolled);
-    }
-
-    /** 구역(두 코너) 안에서 랜덤 좌표를 고르고, 그 x,z의 지형 최고높이+1을 y로 사용 */
-    static Location randomLocationInRegion(Location corner1, Location corner2) {
-        World world = corner1.getWorld();
-        double minX = Math.min(corner1.getX(), corner2.getX());
-        double maxX = Math.max(corner1.getX(), corner2.getX());
-        double minZ = Math.min(corner1.getZ(), corner2.getZ());
-        double maxZ = Math.max(corner1.getZ(), corner2.getZ());
-
-        Random random = ThreadLocalRandom.current();
-        double x = minX + random.nextDouble() * (maxX - minX);
-        double z = minZ + random.nextDouble() * (maxZ - minZ);
-        int y = world.getHighestBlockYAt((int) x, (int) z) + 1;
-
-        return new Location(world, x, y, z);
     }
 }

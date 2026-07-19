@@ -115,24 +115,17 @@ public class SuperSupplyDropManager implements GameEvent {
     }
 
     private void spawnSingleChest() {
-        Location[] region = plugin.getDataStore().loadSupplyRegion("super");
-        Location loc;
+        World world = Bukkit.getWorlds().get(0);
+        double centerX = plugin.getConfig().getDouble("supplydrop.super.center-x", 0);
+        double centerZ = plugin.getConfig().getDouble("supplydrop.super.center-z", 0);
+        int radius = plugin.getConfig().getInt("supplydrop.super.radius", 300);
 
-        if (region != null) {
-            loc = SupplyDropManager.randomLocationInRegion(region[0], region[1]);
-        } else {
-            World world = Bukkit.getWorlds().get(0);
-            double centerX = plugin.getConfig().getDouble("supplydrop.super.center-x", 0);
-            double centerZ = plugin.getConfig().getDouble("supplydrop.super.center-z", 0);
-            int radius = plugin.getConfig().getInt("supplydrop.super.radius", 300);
+        Random random = ThreadLocalRandom.current();
+        double x = centerX + (random.nextDouble() * 2 - 1) * radius;
+        double z = centerZ + (random.nextDouble() * 2 - 1) * radius;
+        int y = world.getHighestBlockYAt((int) x, (int) z) + 1;
 
-            Random random = ThreadLocalRandom.current();
-            double x = centerX + (random.nextDouble() * 2 - 1) * radius;
-            double z = centerZ + (random.nextDouble() * 2 - 1) * radius;
-            int y = world.getHighestBlockYAt((int) x, (int) z) + 1;
-            loc = new Location(world, x, y, z);
-        }
-
+        Location loc = new Location(world, x, y, z);
         Block block = loc.getBlock();
         block.setType(Material.CHEST);
 

@@ -90,11 +90,9 @@ public class KothCommand implements CommandExecutor, TabCompleter {
 
                 if (args[2].equals("1")) {
                     zone.setCorner1(p.getLocation());
-                    plugin.getDataStore().saveKothZone(id, p.getLocation(), null);
                     sender.sendMessage("§a구역 '" + id + "' 1번 코너가 저장되었습니다.");
                 } else if (args[2].equals("2")) {
                     zone.setCorner2(p.getLocation());
-                    plugin.getDataStore().saveKothZone(id, null, p.getLocation());
                     sender.sendMessage(zone.isComplete()
                             ? "§a구역 '" + id + "' 설정이 완료되었습니다."
                             : "§e구역 '" + id + "' 2번 코너가 저장되었습니다. (1번 코너를 먼저 지정하세요)");
