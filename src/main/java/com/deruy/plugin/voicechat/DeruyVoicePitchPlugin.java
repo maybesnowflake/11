@@ -9,7 +9,7 @@ import de.maxhenkel.voicechat.api.events.MicrophonePacketEvent;
 import de.maxhenkel.voicechat.api.opus.OpusDecoder;
 import de.maxhenkel.voicechat.api.opus.OpusEncoder;
 
-import javax.sound.sampled.AudioFormat;
+import be.tarsos.dsp.io.TarsosDSPAudioFormat;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -37,6 +37,8 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
 
     private final InvisibilityVoiceEffectTracker tracker;
 
+    // 플레이어별 상태. opus 코덱과 피치 이펙트는 프레임 간 연속성이 있어야 하므로
+    // 매 패킷마다 새로 만들지 않고 재사용해야 함.
     private final ConcurrentHashMap<UUID, OpusDecoder> decoders = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, OpusEncoder> encoders = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, PitchShifter> pitchEffects = new ConcurrentHashMap<>();
@@ -70,7 +72,7 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
         UUID playerId = event.getSenderConnection().getPlayer().getUuid();
 
         if (!tracker.isActive(playerId)) {
-            return;
+            return; // 투명화 아니면 원본 그대로 통과
         }
 
         try {
@@ -86,7 +88,7 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
 
             short[] pcm = decoder.decode(opusData);
 
-            AudioFormat format = new AudioFormat(SAMPLE_RATE, 16, 1, true, false);
+            TarsosDSPAudioFormat format = new TarsosDSPAudioFormat(SAMPLE_RATE, 16, 1, true, false);
             AudioEvent audioEvent = new AudioEvent(format);
             audioEvent.setFloatBuffer(shortsToFloats(pcm));
 
@@ -96,10 +98,15 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
             byte[] newOpus = encoder.encode(processedPcm);
             event.getPacket().setOpusEncodedData(newOpus);
         } catch (Exception e) {
+            // 처리 실패해도 목소리가 아예 끊기는 것보단 원본 오디오가 그대로 나가는 게 나음.
             LOGGER.log(Level.WARNING, "투명화 피치 이펙트 처리 중 오류 (플레이어: " + playerId + ")", e);
         }
     }
 
+    /**
+     * 플레이어가 투명화를 해제했을 때 호출. 코덱/이펙트 상태를 정리해서
+     * 메모리 누수를 막고, 다음에 다시 투명화했을 때 새 상태로 시작하게 함.
+     */
     public void cleanupPlayer(UUID playerId) {
         decoders.remove(playerId);
         encoders.remove(playerId);
