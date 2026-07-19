@@ -50,6 +50,7 @@ public class PvpCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage("§c사용법: /pvp <역할 [역할...]|ALL> on|off [시간(예: 1h, 30m)]");
             return true;
         }
+
         if (roles.length == 0) {
             sender.sendMessage("§c역할을 최소 1개 이상 입력해주세요. (또는 ALL)");
             return true;

@@ -25,7 +25,6 @@ import java.util.Map;
 public class RoleManager {
 
     private final DeruyPlugin plugin;
-
     private final Map<String, Boolean> pvpOverride = new HashMap<>();
     private final Map<String, Long> pvpOverrideExpiry = new HashMap<>();
 
@@ -63,10 +62,8 @@ public class RoleManager {
         if (role != null) {
             Boolean roleOverride = getActiveOverride(role.toUpperCase());
             if (roleOverride != null) return roleOverride;
-
             return plugin.getConfig().getBoolean("roles." + role + ".pvp-allowed", true);
         }
-
         return true;
     }
 
@@ -95,11 +92,9 @@ public class RoleManager {
      */
     public static long parseDuration(String input) {
         if (input == null || input.length() < 2) return -1;
-
         try {
             char unit = input.charAt(input.length() - 1);
             long value = Long.parseLong(input.substring(0, input.length() - 1));
-
             return switch (unit) {
                 case 's' -> value * 1000L;
                 case 'm' -> value * 60L * 1000L;

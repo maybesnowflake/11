@@ -27,6 +27,9 @@ import com.deruy.plugin.locatorbar.LocatorBarManager;
 import com.deruy.plugin.misc.MiscRuleListener;
 import com.deruy.plugin.misc.commands.DeruyTimeCommand;
 import com.deruy.plugin.roleeffect.RoleEffectScheduler;
+import com.deruy.plugin.role.RoleManager;
+import com.deruy.plugin.role.RolePvpListener;
+import com.deruy.plugin.role.commands.PvpCommand;
 import com.deruy.plugin.supplydrop.SupplyChestListener;
 import com.deruy.plugin.supplydrop.SupplyChestRegistry;
 import com.deruy.plugin.supplydrop.SupplyDropManager;
@@ -63,6 +66,7 @@ public class DeruyPlugin extends JavaPlugin {
     private VoiceFeatureSettings voiceFeatureSettings;
     private InvisibilityVoiceEffectTracker invisibilityVoiceEffectTracker;
     private DeruyVoicePitchPlugin voicePitchPlugin;
+    private RoleManager roleManager;
 
     private boolean worldGuardPresent;
     private boolean voiceChatPresent;
@@ -88,6 +92,7 @@ public class DeruyPlugin extends JavaPlugin {
         this.combatZoneVisualizer = new CombatZoneVisualizer(this);
         this.voiceFeatureSettings = new VoiceFeatureSettings(this);
         this.invisibilityVoiceEffectTracker = new InvisibilityVoiceEffectTracker();
+        this.roleManager = new RoleManager(this);
 
         eventManager.register(kothManager);
         eventManager.register(locatorBarManager);
@@ -114,6 +119,7 @@ public class DeruyPlugin extends JavaPlugin {
         pm.registerEvents(new SupplyChestListener(this), this);        // 서플라이드랍 상자 즉시지급
         pm.registerEvents(invisibilityVoiceEffectTracker, this);       // 투명화 상태 추적 (오토튠 이펙트용)
         pm.registerEvents(new KillLogObfuscationListener(this), this); // 투명 상태 킬로그 노이즈 표시
+        pm.registerEvents(new RolePvpListener(this), this);            // 역할별 PVP 허용여부 강제
 
         if (worldGuardPresent) {
             pm.registerEvents(new CombatZoneListener(this), this);
@@ -186,6 +192,10 @@ public class DeruyPlugin extends JavaPlugin {
         var killLogCmd = new KillLogCommand(this);
         getCommand("killlog").setExecutor(killLogCmd);
         getCommand("killlog").setTabCompleter(killLogCmd);
+
+        var pvpCmd = new PvpCommand(this);
+        getCommand("pvp").setExecutor(pvpCmd);
+        getCommand("pvp").setTabCompleter(pvpCmd);
 
         // ---------------- 스케줄러 시작 ----------------
         roleEffectScheduler.start();
@@ -285,5 +295,18 @@ public class DeruyPlugin extends JavaPlugin {
 
     public InvisibilityVoiceEffectTracker getInvisibilityVoiceEffectTracker() {
         return invisibilityVoiceEffectTracker;
+    }
+
+    public RoleManager getRoleManager() {
+        return roleManager;
+    }
+
+    /**
+     * config.yml의 messages.<key> 값을 읽어 '&' 색상코드를 변환해서 반환한다.
+     * 설정이 없으면 defaultValue를 그대로(색상코드 변환 후) 사용한다.
+     */
+    public String getMessage(String key, String defaultValue) {
+        String raw = getConfig().getString("messages." + key, defaultValue);
+        return org.bukkit.ChatColor.translateAlternateColorCodes('&', raw);
     }
 }

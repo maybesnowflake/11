@@ -50,6 +50,10 @@ commands:
     description: 투명 상태 킬러 이름을 킬로그에서 노이즈 문자로 표시할지 온오프
     usage: /<command> on|off|status
     permission: deruy.killlog.admin
+  pvp:
+    description: 역할별 PVP 상태를 시간제한으로 변경
+    usage: /<command> <역할 [역할...]|ALL> on|off [시간]
+    permission: deruy.pvp.admin
 
 permissions:
   deruy.lifesteal.admin:
@@ -71,4 +75,6 @@ permissions:
   deruy.autotune.admin:
     default: op
   deruy.killlog.admin:
+    default: op
+  deruy.pvp.admin:
     default: op
