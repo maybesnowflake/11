@@ -62,9 +62,9 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.JorenSix</groupId>
-            <artifactId>TarsosDSP</artifactId>
-            <version>2.5</version>
+            <groupId>com.github.dragoon000320</groupId>
+            <artifactId>tarsosdsp</artifactId>
+            <version>1.0</version>
         </dependency>
     </dependencies>
     <build>
