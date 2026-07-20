@@ -100,8 +100,22 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
 
             pitchEffect.process(audioEvent);
 
-            short[] processedPcm = floatsToShorts(audioEvent.getFloatBuffer());
+            float[] processedFloats = audioEvent.getFloatBuffer();
+
+            // TarsosDSP의 피치시프터는 처리 후 버퍼 길이가 입력과 달라질 수 있는데(WSOLA 알고리즘 특성),
+            // Opus 인코더는 정해진 프레임 길이(20ms=960샘플)가 아니면 무음에 가까운 깨진 패킷을 만든다.
+            // 그래서 길이를 원본 pcm 길이에 강제로 맞춘 뒤 인코딩한다.
+            if (processedFloats == null || processedFloats.length == 0) {
+                return; // 처리 실패, 원본 오디오 그대로 통과 (이펙트만 스킵됨)
+            }
+
+            short[] processedPcm = floatsToShorts(fixLength(processedFloats, pcm.length));
             byte[] newOpus = encoder.encode(processedPcm);
+
+            if (newOpus == null || newOpus.length == 0) {
+                return; // 인코딩 실패, 원본 오디오 그대로 통과
+            }
+
             event.getPacket().setOpusEncodedData(newOpus);
         } catch (Exception e) {
             // 처리 실패해도 목소리가 아예 끊기는 것보단 원본 오디오가 그대로 나가는 게 나음.
@@ -125,6 +139,14 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
             floats[i] = shorts[i] / 32768f;
         }
         return floats;
+    }
+
+    /** 버퍼 길이를 targetLength에 강제로 맞춘다. 부족하면 0으로 채우고, 넘치면 자른다. */
+    private static float[] fixLength(float[] input, int targetLength) {
+        if (input.length == targetLength) return input;
+        float[] result = new float[targetLength];
+        System.arraycopy(input, 0, result, 0, Math.min(input.length, targetLength));
+        return result;
     }
 
     private static short[] floatsToShorts(float[] floats) {
