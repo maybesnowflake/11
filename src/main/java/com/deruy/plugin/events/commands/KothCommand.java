@@ -1,7 +1,13 @@
 package com.deruy.plugin.events.commands;
 
 import com.deruy.plugin.DeruyPlugin;
+import com.deruy.plugin.events.koth.KothManager;
 import com.deruy.plugin.events.koth.KothZone;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -10,13 +16,16 @@ import org.bukkit.entity.Player;
 import org.bukkit.util.StringUtil;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * /koth on|off                    - KOTH 기능 자체 활성/비활성 (마스터 스위치)
  * /koth setregion <id> 1|2        - id로 구역 지정 (여러 id로 원하는 개수만큼: 1,2,3...7 등)
  * /koth removezone <id>           - 특정 구역 삭제
- * /koth zones                     - 설정된 구역 목록 확인
+ * /koth zones                     - 설정된 구역 목록 확인 + 테두리를 빨간 유리로 잠깐 시각화
  * /koth start                     - 라운드 시작 (등록된 모든 구역이 동시에 활성화됨)
  * /koth stop                      - 라운드 강제 종료
  * /koth status                    - 현재 상태 확인
@@ -74,6 +83,10 @@ public class KothCommand implements CommandExecutor, TabCompleter {
                     String state = !zone.isComplete() ? "§c미완성" : (koth.getActiveZoneIds().contains(id) ? "§a활성중" : "§7대기중");
                     sender.sendMessage("§e- " + id + ": " + state);
                 });
+
+                if (sender instanceof Player p) {
+                    showZonesVisual(p, koth);
+                }
                 return true;
             }
             case "setregion" -> {
@@ -130,7 +143,7 @@ public class KothCommand implements CommandExecutor, TabCompleter {
             }
             case "start" -> {
                 if (args.length >= 2) {
-                    String[] ids = java.util.Arrays.copyOfRange(args, 1, args.length);
+                    String[] ids = Arrays.copyOfRange(args, 1, args.length);
                     koth.start(ids);
                 } else {
                     koth.start();
@@ -139,7 +152,7 @@ public class KothCommand implements CommandExecutor, TabCompleter {
             }
             case "stop" -> {
                 if (args.length >= 2) {
-                    String[] ids = java.util.Arrays.copyOfRange(args, 1, args.length);
+                    String[] ids = Arrays.copyOfRange(args, 1, args.length);
                     koth.stop(ids);
                 } else {
                     koth.stop();
@@ -170,6 +183,73 @@ public class KothCommand implements CommandExecutor, TabCompleter {
         } else if (args.length == 2 && args[0].equalsIgnoreCase("time")) {
             StringUtil.copyPartialMatches(args[1], List.of("30", "60", "90", "120"), result);
         }
+        return result;
+    }
+
+    // ---------------- 구역 시각화 ----------------
+
+    /**
+     * 저장된 모든 KOTH 구역의 테두리를 빨간 유리로 잠깐 보여준다.
+     * 컴벳존 시각화와 동일한 규칙: 공기/잡초 등 비-solid 블록만 바뀌고,
+     * 흑요석/잔디블럭 같은 완전체(solid) 블록은 건드리지 않는다.
+     */
+    private void showZonesVisual(Player player, KothManager koth) {
+        Map<Location, BlockData> originals = new HashMap<>();
+
+        for (KothZone zone : koth.getZones().values()) {
+            if (!zone.isComplete()) continue;
+            if (!zone.getCorner1().getWorld().equals(player.getWorld())) continue;
+
+            for (Location loc : edgeBlocksOf(zone.getCorner1(), zone.getCorner2())) {
+                var block = loc.getBlock();
+                if (block.getType().isSolid()) continue; // solid는 건너뜀, 공기/잡초만 표시
+
+                originals.put(loc, block.getBlockData());
+                player.sendBlockChange(loc, Material.RED_STAINED_GLASS.createBlockData());
+            }
+        }
+
+        if (originals.isEmpty()) return;
+
+        int durationSeconds = plugin.getConfig().getInt("koth.zones-visualize-duration-seconds", 15);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            for (var entry : originals.entrySet()) {
+                player.sendBlockChange(entry.getKey(), entry.getValue());
+            }
+        }, durationSeconds * 20L);
+    }
+
+    /** 두 코너로 정의된 박스의 테두리(12개 모서리)를 이루는 정수 좌표 블록들을 반환한다. */
+    private List<Location> edgeBlocksOf(Location corner1, Location corner2) {
+        List<Location> result = new ArrayList<>();
+        World world = corner1.getWorld();
+
+        int minX = Math.min(corner1.getBlockX(), corner2.getBlockX());
+        int maxX = Math.max(corner1.getBlockX(), corner2.getBlockX());
+        int minY = Math.min(corner1.getBlockY(), corner2.getBlockY());
+        int maxY = Math.max(corner1.getBlockY(), corner2.getBlockY());
+        int minZ = Math.min(corner1.getBlockZ(), corner2.getBlockZ());
+        int maxZ = Math.max(corner1.getBlockZ(), corner2.getBlockZ());
+
+        for (int x = minX; x <= maxX; x++) {
+            result.add(new Location(world, x, minY, minZ));
+            result.add(new Location(world, x, minY, maxZ));
+            result.add(new Location(world, x, maxY, minZ));
+            result.add(new Location(world, x, maxY, maxZ));
+        }
+        for (int y = minY; y <= maxY; y++) {
+            result.add(new Location(world, minX, y, minZ));
+            result.add(new Location(world, minX, y, maxZ));
+            result.add(new Location(world, maxX, y, minZ));
+            result.add(new Location(world, maxX, y, maxZ));
+        }
+        for (int z = minZ; z <= maxZ; z++) {
+            result.add(new Location(world, minX, minY, z));
+            result.add(new Location(world, minX, maxY, z));
+            result.add(new Location(world, maxX, minY, z));
+            result.add(new Location(world, maxX, maxY, z));
+        }
+
         return result;
     }
 }
