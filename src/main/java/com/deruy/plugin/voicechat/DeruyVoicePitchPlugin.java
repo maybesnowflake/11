@@ -44,6 +44,9 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
     private final ConcurrentHashMap<UUID, OpusEncoder> encoders = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, PitchShifter> pitchEffects = new ConcurrentHashMap<>();
 
+    // 로그 스팸 방지용: 플레이어별 마지막 로그 출력 시각
+    private final ConcurrentHashMap<UUID, Long> lastLogTime = new ConcurrentHashMap<>();
+
     private VoicechatApi api;
 
     public DeruyVoicePitchPlugin(InvisibilityVoiceEffectTracker tracker, VoiceFeatureSettings settings) {
@@ -66,6 +69,14 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
         registration.registerEvent(MicrophonePacketEvent.class, this::onMicrophonePacket);
     }
 
+    private void debugLog(UUID playerId, String message) {
+        long now = System.currentTimeMillis();
+        Long last = lastLogTime.get(playerId);
+        if (last != null && now - last < 2000) return; // 2초에 한 번만
+        lastLogTime.put(playerId, now);
+        LOGGER.info("[디버그] " + playerId + " - " + message);
+    }
+
     private void onMicrophonePacket(MicrophonePacketEvent event) {
         if (!settings.isAutotuneEnabled()) {
             return; // 서버 전체 설정으로 꺼져 있으면 원본 그대로 통과 (즉시 반영됨)
@@ -81,11 +92,15 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
             return; // 투명화 아니면 원본 그대로 통과
         }
 
+        debugLog(playerId, "투명화 감지됨, 오토튠 처리 시작");
+
         try {
             byte[] opusData = event.getPacket().getOpusEncodedData();
             if (opusData == null || opusData.length == 0) {
+                debugLog(playerId, "opusData가 비어있음 - 스킵");
                 return;
             }
+            debugLog(playerId, "opusData 수신: " + opusData.length + "바이트");
 
             OpusDecoder decoder = decoders.computeIfAbsent(playerId, id -> api.createDecoder());
             OpusEncoder encoder = encoders.computeIfAbsent(playerId, id -> api.createEncoder());
@@ -93,6 +108,7 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
                     id -> new PitchShifter(PITCH_FACTOR, SAMPLE_RATE, BUFFER_SIZE, OVERLAP));
 
             short[] pcm = decoder.decode(opusData);
+            debugLog(playerId, "디코드 완료: " + (pcm != null ? pcm.length : -1) + "샘플");
 
             TarsosDSPAudioFormat format = new TarsosDSPAudioFormat(SAMPLE_RATE, 16, 1, true, false);
             AudioEvent audioEvent = new AudioEvent(format);
@@ -101,22 +117,27 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
             pitchEffect.process(audioEvent);
 
             float[] processedFloats = audioEvent.getFloatBuffer();
+            debugLog(playerId, "피치처리 완료: " + (processedFloats != null ? processedFloats.length : -1) + "샘플");
 
             // TarsosDSP의 피치시프터는 처리 후 버퍼 길이가 입력과 달라질 수 있는데(WSOLA 알고리즘 특성),
             // Opus 인코더는 정해진 프레임 길이(20ms=960샘플)가 아니면 무음에 가까운 깨진 패킷을 만든다.
             // 그래서 길이를 원본 pcm 길이에 강제로 맞춘 뒤 인코딩한다.
             if (processedFloats == null || processedFloats.length == 0) {
+                debugLog(playerId, "피치처리 결과 비어있음 - 원본 통과");
                 return; // 처리 실패, 원본 오디오 그대로 통과 (이펙트만 스킵됨)
             }
 
             short[] processedPcm = floatsToShorts(fixLength(processedFloats, pcm.length));
             byte[] newOpus = encoder.encode(processedPcm);
+            debugLog(playerId, "인코드 완료: " + (newOpus != null ? newOpus.length : -1) + "바이트");
 
             if (newOpus == null || newOpus.length == 0) {
+                debugLog(playerId, "인코드 결과 비어있음 - 원본 통과");
                 return; // 인코딩 실패, 원본 오디오 그대로 통과
             }
 
             event.getPacket().setOpusEncodedData(newOpus);
+            debugLog(playerId, "패킷 교체 완료");
         } catch (Exception e) {
             // 처리 실패해도 목소리가 아예 끊기는 것보단 원본 오디오가 그대로 나가는 게 나음.
             LOGGER.log(Level.WARNING, "투명화 오토튠 이펙트 처리 중 오류 (플레이어: " + playerId + ")", e);
