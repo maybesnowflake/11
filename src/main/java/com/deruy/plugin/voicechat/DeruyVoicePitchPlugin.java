@@ -68,6 +68,9 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
         registration.registerEvent(MicrophonePacketEvent.class, this::onMicrophonePacket);
     }
 
+// 침묵 감지시 FIFO를 완전히 비웠는지 여부는 별도 추적 불필요, 그냥 매번 비어있으면 비움
+    private static final int SOFT_TRIM_THRESHOLD = BUFFER_SIZE * 6; // 이 이상 쌓이면 한번에 정리
+
     private void onMicrophonePacket(MicrophonePacketEvent event) {
         if (!settings.isAutotuneEnabled()) {
             return;
@@ -85,33 +88,42 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
 
         try {
             byte[] opusData = event.getPacket().getOpusEncodedData();
+
+            OpusEncoder encoder = encoders.computeIfAbsent(playerId, id -> api.createEncoder());
+            Deque<Float> fifo = fifoBuffers.computeIfAbsent(playerId, id -> new ArrayDeque<>());
+
             if (opusData == null || opusData.length == 0) {
+                // 침묵 구간: 소리가 없을 때 FIFO를 통째로 비워서 다음 발화 시작을 깔끔하게 만든다.
+                // (여기서 버려도 어차피 무음 구간이라 들리는 소리 없음 = 클릭음 없이 정리 가능)
+                fifo.clear();
                 return;
             }
 
             OpusDecoder decoder = decoders.computeIfAbsent(playerId, id -> api.createDecoder());
-            OpusEncoder encoder = encoders.computeIfAbsent(playerId, id -> api.createEncoder());
-            Deque<Float> fifo = fifoBuffers.computeIfAbsent(playerId, id -> new ArrayDeque<>());
-
             short[] pcm = decoder.decode(opusData);
             if (pcm == null || pcm.length == 0) return;
 
-            // 리샘플링으로 피치 다운시프트: 원본보다 더 많은 샘플로 "늘려서" 해석하면
-            // 재생시 더 낮은 음으로 들린다.
             float[] resampled = resamplePitchDown(pcm, PITCH_FACTOR);
             for (float sample : resampled) {
                 fifo.addLast(sample);
             }
 
-            // FIFO가 너무 커지지 않게 상한 유지 (오래된 것부터 버림, 약간의 지연은 감수)
-            while (fifo.size() > MAX_FIFO_SIZE) {
-                fifo.pollFirst();
+            // 상한을 넘으면 매 패킷 조금씩 버리는 대신, 한번에 목표치까지 정리한다.
+            // (트리밍 빈도를 확 줄여서 지지직거리는 잡음을 최소화)
+            if (fifo.size() > SOFT_TRIM_THRESHOLD) {
+                int target = BUFFER_SIZE * 2;
+                while (fifo.size() > target) {
+                    fifo.pollFirst();
+                }
             }
 
-            // FIFO에 정확히 한 프레임(960개) 이상 쌓였을 때만 인코딩해서 내보낸다.
             if (fifo.size() < BUFFER_SIZE) {
-                // 아직 한 프레임 분량이 안 모였으면 이번 패킷은 무음(0)으로 채워 내보내서
-                // 타이밍은 유지하고, 다음 패킷들에서 쌓인 걸 내보낸다.
+                // 아직 한 프레임 분량이 안 모임: 원본(피치 안바뀐) 오디오가 새어나가지 않도록
+                // 무음 프레임을 대신 내보낸다. (여기서 그냥 return하면 원본 피치가 새어나감)
+                byte[] silence = encoder.encode(new short[BUFFER_SIZE]);
+                if (silence != null && silence.length > 0) {
+                    event.getPacket().setOpusEncodedData(silence);
+                }
                 return;
             }
 
@@ -132,7 +144,6 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
             LOGGER.log(Level.WARNING, "투명화 오토튠 이펙트 처리 중 오류 (플레이어: " + playerId + ")", e);
         }
     }
-
     /**
      * 선형보간 리샘플링으로 피치를 낮춘다. factor(0~1)가 작을수록 더 많이 낮아진다.
      * 출력 길이 = 입력길이 / factor (factor<1 이므로 출력이 더 길어짐 = FIFO에 더 많이 쌓임)
