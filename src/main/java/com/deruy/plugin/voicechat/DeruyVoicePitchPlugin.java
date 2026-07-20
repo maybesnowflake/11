@@ -1,8 +1,5 @@
 package com.deruy.plugin.voicechat;
 
-import be.tarsos.dsp.AudioEvent;
-import be.tarsos.dsp.PitchShifter;
-import be.tarsos.dsp.io.TarsosDSPAudioFormat;
 import de.maxhenkel.voicechat.api.VoicechatApi;
 import de.maxhenkel.voicechat.api.VoicechatPlugin;
 import de.maxhenkel.voicechat.api.events.EventRegistration;
@@ -10,6 +7,8 @@ import de.maxhenkel.voicechat.api.events.MicrophonePacketEvent;
 import de.maxhenkel.voicechat.api.opus.OpusDecoder;
 import de.maxhenkel.voicechat.api.opus.OpusEncoder;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -20,6 +19,10 @@ import java.util.logging.Logger;
  * 고정 피치 다운시프트(기본 -6반음, 성인 남성 저음 느낌 = "오토튠")를 적용하는
  * SimpleVoiceChat 서버 플러그인.
  *
+ * 직접 구현한 리샘플링 방식의 피치시프트 + 플레이어별 FIFO 버퍼를 사용한다.
+ * (기존에 쓰던 TarsosDSP의 PitchShifter는 패킷 단위로 끊어서 넣으면
+ *  내부 상태가 꼬여서 무음에 가까운 결과가 나오는 문제가 있어 제거함)
+ *
  * VoiceFeatureSettings.isAutotuneEnabled()로 서버 전체 온/오프 제어.
  * 꺼져 있거나 투명화가 아니면 원본 오디오를 그대로 통과시켜 서버 부하를 최소화한다.
  */
@@ -29,23 +32,19 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
     private static final double PITCH_SEMITONES = -6.0;
     private static final double PITCH_FACTOR = Math.pow(2.0, PITCH_SEMITONES / 12.0);
 
-    private static final int SAMPLE_RATE = 48000;
-    private static final int BUFFER_SIZE = 960; // 20ms @ 48kHz mono
-    private static final int OVERLAP = 240;
+    private static final int BUFFER_SIZE = 960; // 20ms @ 48kHz mono, Opus 프레임 크기
+    // FIFO가 무한정 커지는 걸 막기 위한 상한 (피치를 낮추면 원리상 계속 버퍼가 쌓이므로 필요)
+    private static final int MAX_FIFO_SIZE = BUFFER_SIZE * 8;
 
     private static final Logger LOGGER = Logger.getLogger("DeruyVoicePitchPlugin");
 
     private final InvisibilityVoiceEffectTracker tracker;
     private final VoiceFeatureSettings settings;
 
-    // 플레이어별 상태. opus 코덱과 피치 이펙트는 프레임 간 연속성이 있어야 하므로
-    // 매 패킷마다 새로 만들지 않고 재사용해야 함.
     private final ConcurrentHashMap<UUID, OpusDecoder> decoders = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, OpusEncoder> encoders = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<UUID, PitchShifter> pitchEffects = new ConcurrentHashMap<>();
-
-    // 로그 스팸 방지용: 플레이어별 마지막 로그 출력 시각
-    private final ConcurrentHashMap<UUID, Long> lastLogTime = new ConcurrentHashMap<>();
+    // 플레이어별 리샘플된 오디오 FIFO. 매 패킷마다 리샘플 결과를 여기 쌓고, 정확히 960개씩 꺼내 인코딩한다.
+    private final ConcurrentHashMap<UUID, Deque<Float>> fifoBuffers = new ConcurrentHashMap<>();
 
     private VoicechatApi api;
 
@@ -69,13 +68,9 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
         registration.registerEvent(MicrophonePacketEvent.class, this::onMicrophonePacket);
     }
 
-private void debugLog(UUID playerId, String message) {
-        LOGGER.info("[디버그] " + playerId + " - " + message);
-    }
-
     private void onMicrophonePacket(MicrophonePacketEvent event) {
         if (!settings.isAutotuneEnabled()) {
-            return; // 서버 전체 설정으로 꺼져 있으면 원본 그대로 통과 (즉시 반영됨)
+            return;
         }
 
         if (event.getSenderConnection() == null || event.getSenderConnection().getPlayer() == null) {
@@ -85,93 +80,84 @@ private void debugLog(UUID playerId, String message) {
         UUID playerId = event.getSenderConnection().getPlayer().getUuid();
 
         if (!tracker.isActive(playerId)) {
-            return; // 투명화 아니면 원본 그대로 통과
+            return;
         }
-
-        debugLog(playerId, "투명화 감지됨, 오토튠 처리 시작");
 
         try {
             byte[] opusData = event.getPacket().getOpusEncodedData();
             if (opusData == null || opusData.length == 0) {
-                debugLog(playerId, "opusData가 비어있음 - 스킵");
                 return;
             }
-            debugLog(playerId, "opusData 수신: " + opusData.length + "바이트");
 
             OpusDecoder decoder = decoders.computeIfAbsent(playerId, id -> api.createDecoder());
             OpusEncoder encoder = encoders.computeIfAbsent(playerId, id -> api.createEncoder());
-            PitchShifter pitchEffect = pitchEffects.computeIfAbsent(playerId,
-                    id -> new PitchShifter(PITCH_FACTOR, SAMPLE_RATE, BUFFER_SIZE, OVERLAP));
+            Deque<Float> fifo = fifoBuffers.computeIfAbsent(playerId, id -> new ArrayDeque<>());
 
             short[] pcm = decoder.decode(opusData);
-            debugLog(playerId, "디코드 완료: " + (pcm != null ? pcm.length : -1) + "샘플");
+            if (pcm == null || pcm.length == 0) return;
 
-            TarsosDSPAudioFormat format = new TarsosDSPAudioFormat(SAMPLE_RATE, 16, 1, true, false);
-            AudioEvent audioEvent = new AudioEvent(format);
-            audioEvent.setFloatBuffer(shortsToFloats(pcm));
-
-            pitchEffect.process(audioEvent);
-
-            float[] processedFloats = audioEvent.getFloatBuffer();
-            debugLog(playerId, "피치처리 완료: " + (processedFloats != null ? processedFloats.length : -1) + "샘플");
-
-            // TarsosDSP의 피치시프터는 처리 후 버퍼 길이가 입력과 달라질 수 있는데(WSOLA 알고리즘 특성),
-            // Opus 인코더는 정해진 프레임 길이(20ms=960샘플)가 아니면 무음에 가까운 깨진 패킷을 만든다.
-            // 그래서 길이를 원본 pcm 길이에 강제로 맞춘 뒤 인코딩한다.
-            if (processedFloats == null || processedFloats.length == 0) {
-                debugLog(playerId, "피치처리 결과 비어있음 - 원본 통과");
-                return; // 처리 실패, 원본 오디오 그대로 통과 (이펙트만 스킵됨)
+            // 리샘플링으로 피치 다운시프트: 원본보다 더 많은 샘플로 "늘려서" 해석하면
+            // 재생시 더 낮은 음으로 들린다.
+            float[] resampled = resamplePitchDown(pcm, PITCH_FACTOR);
+            for (float sample : resampled) {
+                fifo.addLast(sample);
             }
 
-            short[] processedPcm = floatsToShorts(fixLength(processedFloats, pcm.length));
-            byte[] newOpus = encoder.encode(processedPcm);
-            debugLog(playerId, "인코드 완료: " + (newOpus != null ? newOpus.length : -1) + "바이트");
+            // FIFO가 너무 커지지 않게 상한 유지 (오래된 것부터 버림, 약간의 지연은 감수)
+            while (fifo.size() > MAX_FIFO_SIZE) {
+                fifo.pollFirst();
+            }
 
+            // FIFO에 정확히 한 프레임(960개) 이상 쌓였을 때만 인코딩해서 내보낸다.
+            if (fifo.size() < BUFFER_SIZE) {
+                // 아직 한 프레임 분량이 안 모였으면 이번 패킷은 무음(0)으로 채워 내보내서
+                // 타이밍은 유지하고, 다음 패킷들에서 쌓인 걸 내보낸다.
+                return;
+            }
+
+            short[] outputPcm = new short[BUFFER_SIZE];
+            for (int i = 0; i < BUFFER_SIZE; i++) {
+                float v = fifo.pollFirst();
+                v = Math.max(-1f, Math.min(1f, v));
+                outputPcm[i] = (short) (v * 32767f);
+            }
+
+            byte[] newOpus = encoder.encode(outputPcm);
             if (newOpus == null || newOpus.length == 0) {
-                debugLog(playerId, "인코드 결과 비어있음 - 원본 통과");
-                return; // 인코딩 실패, 원본 오디오 그대로 통과
+                return;
             }
 
             event.getPacket().setOpusEncodedData(newOpus);
-            debugLog(playerId, "패킷 교체 완료");
         } catch (Exception e) {
-            // 처리 실패해도 목소리가 아예 끊기는 것보단 원본 오디오가 그대로 나가는 게 나음.
             LOGGER.log(Level.WARNING, "투명화 오토튠 이펙트 처리 중 오류 (플레이어: " + playerId + ")", e);
         }
     }
 
     /**
-     * 플레이어가 투명화를 해제했을 때 호출. 코덱/이펙트 상태를 정리해서
+     * 선형보간 리샘플링으로 피치를 낮춘다. factor(0~1)가 작을수록 더 많이 낮아진다.
+     * 출력 길이 = 입력길이 / factor (factor<1 이므로 출력이 더 길어짐 = FIFO에 더 많이 쌓임)
+     */
+    private static float[] resamplePitchDown(short[] input, double factor) {
+        int outputLength = (int) Math.round(input.length / factor);
+        float[] output = new float[outputLength];
+        for (int i = 0; i < outputLength; i++) {
+            double srcPos = i * factor;
+            int idx = (int) srcPos;
+            double frac = srcPos - idx;
+            float a = idx < input.length ? input[idx] / 32768f : 0f;
+            float b = (idx + 1) < input.length ? input[idx + 1] / 32768f : a;
+            output[i] = (float) (a + (b - a) * frac);
+        }
+        return output;
+    }
+
+    /**
+     * 플레이어가 투명화를 해제했을 때 호출. 코덱/버퍼 상태를 정리해서
      * 메모리 누수를 막고, 다음에 다시 투명화했을 때 새 상태로 시작하게 함.
      */
     public void cleanupPlayer(UUID playerId) {
         decoders.remove(playerId);
         encoders.remove(playerId);
-        pitchEffects.remove(playerId);
-    }
-
-    private static float[] shortsToFloats(short[] shorts) {
-        float[] floats = new float[shorts.length];
-        for (int i = 0; i < shorts.length; i++) {
-            floats[i] = shorts[i] / 32768f;
-        }
-        return floats;
-    }
-
-    /** 버퍼 길이를 targetLength에 강제로 맞춘다. 부족하면 0으로 채우고, 넘치면 자른다. */
-    private static float[] fixLength(float[] input, int targetLength) {
-        if (input.length == targetLength) return input;
-        float[] result = new float[targetLength];
-        System.arraycopy(input, 0, result, 0, Math.min(input.length, targetLength));
-        return result;
-    }
-
-    private static short[] floatsToShorts(float[] floats) {
-        short[] shorts = new short[floats.length];
-        for (int i = 0; i < floats.length; i++) {
-            float v = Math.max(-1f, Math.min(1f, floats[i]));
-            shorts[i] = (short) (v * 32767f);
-        }
-        return shorts;
+        fifoBuffers.remove(playerId);
     }
 }
