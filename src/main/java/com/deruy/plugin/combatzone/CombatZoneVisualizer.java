@@ -139,7 +139,7 @@ public class CombatZoneVisualizer {
 
                         // 완전체(solid) 블록만 표시. 공기/잡초 등 비-solid 블록은 건너뜀.
                         Material currentType = player.getWorld().getBlockAt(x, y, z).getType();
-                        if (!currentType.isSolid()) continue;
+                        if (currentType.isSolid()) continue;
 
                         result.add(new Location(player.getWorld(), x, y, z));
                     }
