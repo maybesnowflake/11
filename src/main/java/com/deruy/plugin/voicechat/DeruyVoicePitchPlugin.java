@@ -69,11 +69,7 @@ public class DeruyVoicePitchPlugin implements VoicechatPlugin {
         registration.registerEvent(MicrophonePacketEvent.class, this::onMicrophonePacket);
     }
 
-    private void debugLog(UUID playerId, String message) {
-        long now = System.currentTimeMillis();
-        Long last = lastLogTime.get(playerId);
-        if (last != null && now - last < 2000) return; // 2초에 한 번만
-        lastLogTime.put(playerId, now);
+private void debugLog(UUID playerId, String message) {
         LOGGER.info("[디버그] " + playerId + " - " + message);
     }
 
