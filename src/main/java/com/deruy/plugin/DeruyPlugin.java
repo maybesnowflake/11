@@ -15,6 +15,7 @@ import com.deruy.plugin.events.commands.KothCommand;
 import com.deruy.plugin.events.koth.KothManager;
 import com.deruy.plugin.lifesteal.LifeStealManager;
 import com.deruy.plugin.lifesteal.RecipeManager;
+import com.deruy.plugin.lifesteal.CombatBossBarManager;
 import com.deruy.plugin.lifesteal.commands.CombatCommand;
 import com.deruy.plugin.lifesteal.commands.LifeStealCommand;
 import com.deruy.plugin.lifesteal.listeners.DeathListener;
@@ -70,6 +71,7 @@ public class DeruyPlugin extends JavaPlugin {
     private DeruyVoicePitchPlugin voicePitchPlugin;
     private RoleManager roleManager;
     private DataStore dataStore;
+    private CombatBossBarManager combatBossBarManager;
 
     private boolean worldGuardPresent;
     private boolean voiceChatPresent;
@@ -97,6 +99,7 @@ public class DeruyPlugin extends JavaPlugin {
         this.voiceFeatureSettings = new VoiceFeatureSettings(this);
         this.invisibilityVoiceEffectTracker = new InvisibilityVoiceEffectTracker();
         this.roleManager = new RoleManager(this);
+        this.combatBossBarManager = new CombatBossBarManager(this);
 
         eventManager.register(kothManager);
         eventManager.register(locatorBarManager);
@@ -204,6 +207,7 @@ public class DeruyPlugin extends JavaPlugin {
 
         // ---------------- 스케줄러 시작 ----------------
         roleEffectScheduler.start();
+        combatBossBarManager.start();
 
         getLogger().info("DeruyPlugin 활성화 완료.");
     }
@@ -218,6 +222,7 @@ public class DeruyPlugin extends JavaPlugin {
         if (bountyManager != null && bountyManager.isRunning()) bountyManager.stop();
         if (roleEffectScheduler != null) roleEffectScheduler.stop();
         if (combatZoneVisualizer != null) combatZoneVisualizer.stop();
+        if (combatBossBarManager != null) combatBossBarManager.stop();
     }
 
     /**
@@ -311,6 +316,10 @@ public class DeruyPlugin extends JavaPlugin {
 
     public DataStore getDataStore() {
         return dataStore;
+    }
+
+    public CombatBossBarManager getCombatBossBarManager() {
+        return combatBossBarManager;
     }
 
     /**
