@@ -8,7 +8,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.inventory.Recipe;
-import org.bukkit.inventory.recipe.CraftingRecipe;
+import org.bukkit.inventory.CraftingRecipe;
 
 /**
  * config의 item-limits에 등록된 레시피(예: totem, mace, custom_netherite_chestplate)가
